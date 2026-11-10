@@ -45,6 +45,7 @@ from .edge_tts_provider import EdgeTTSProvider
 from .gemini_live_bridge import GeminiLiveBridge, manual_vad_enabled
 from .opus_codec import StackchanOpusCodec
 from .session_keepalive import SessionKeepalive, keepalive_interval_from_env
+from .audio_dump import DeviceAudioDump
 from .wake_gate import LISTENING_LED_RGB, WakeGate, create_wake_gate_from_env
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,8 @@ class GeminiVoiceProxy:
     _codec: StackchanOpusCodec | None = None
     _edge_tts: EdgeTTSProvider | None = None
     _wake_gate: WakeGate | None = None
+    _audio_dump: DeviceAudioDump | None = None
+    _audio_dump_checked: bool = False
     _wake_gate_failures: int = 0
     _wake_gate_permanently_failed: bool = False
     _wake_gate_next_rebuild_at: float = 0.0
@@ -451,6 +454,8 @@ class GeminiVoiceProxy:
 
     async def stop(self) -> None:
         self._stopped = True
+        if self._audio_dump is not None:
+            self._audio_dump.close()
         self._tts_generation += 1
         if self._keepalive is not None:
             await self._keepalive.stop()
@@ -522,6 +527,12 @@ class GeminiVoiceProxy:
         pcm = self._codec.decode_device_frame(data)
         if not pcm:
             return False
+        if self._audio_dump is None and not self._audio_dump_checked:
+            self._audio_dump_checked = True
+            label = self.info.device_id if self.info is not None and self.info.device_id else "device"
+            self._audio_dump = DeviceAudioDump.from_env(label=label)
+        if self._audio_dump is not None:
+            self._audio_dump.write(pcm)
         try:
             await self._forward_gated_device_pcm(pcm)
             return True
