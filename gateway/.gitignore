@@ -34,3 +34,5 @@ Thumbs.db
 build/
 dist/
 .debug-memleak/
+vendor/*.dll
+logs/
