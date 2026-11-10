@@ -33,35 +33,57 @@ logger = logging.getLogger(__name__)
 _libopus_patched = False
 
 
-def _patch_find_library_for_brew() -> None:
-    """Make ``find_library('opus')`` see brew's libopus on macOS Tahoe.
+def _opus_candidates() -> list[str | None]:
+    """Platform-specific places to look for libopus, explicit override first."""
+    explicit = os.environ.get("STACKCHAN_LIBOPUS_PATH")
+    if sys.platform == "darwin":
+        return [
+            explicit,
+            "/opt/homebrew/lib/libopus.0.dylib",
+            "/opt/homebrew/lib/libopus.dylib",
+            "/usr/local/lib/libopus.0.dylib",
+            "/usr/local/lib/libopus.dylib",
+        ]
+    if sys.platform == "win32":
+        # gateway/vendor/ sits next to the stackchan_mcp package directory.
+        vendor = Path(__file__).resolve().parent.parent / "vendor"
+        return [
+            explicit,
+            str(vendor / "opus.dll"),
+            str(vendor / "libopus-0.dll"),
+            str(Path.cwd() / "opus.dll"),
+        ]
+    return [explicit]
 
-    macOS 11+ dyld cache no longer carries /opt/homebrew/lib, so
-    ``ctypes.util.find_library('opus')`` returns None even when
-    ``brew install opus`` was run. opuslib raises at import time when
-    it can't locate the library, which kills the whole voice backend.
-    Monkey-patch find_library so opuslib's import succeeds.
+
+def _patch_find_library_for_brew() -> None:
+    """Make ``find_library('opus')`` see libopus where the OS search misses it.
+
+    * macOS 11+: dyld cache no longer carries /opt/homebrew/lib, so
+      ``ctypes.util.find_library('opus')`` returns None even after
+      ``brew install opus``.
+    * Windows: there is no system libopus; ``find_library`` only scans PATH.
+      ``STACKCHAN_LIBOPUS_PATH`` or ``gateway/vendor/opus.dll`` is used.
+
+    opuslib raises at import time when it can't locate the library, which
+    kills the whole voice backend. Monkey-patch find_library so opuslib's
+    import succeeds. Other platforms honour only ``STACKCHAN_LIBOPUS_PATH``.
     """
     global _libopus_patched
-    if _libopus_patched or sys.platform != "darwin":
-        _libopus_patched = True
+    if _libopus_patched:
         return
     if ctypes.util.find_library("opus") is not None:
         _libopus_patched = True
         return
-    candidates = [
-        os.environ.get("STACKCHAN_LIBOPUS_PATH"),
-        "/opt/homebrew/lib/libopus.0.dylib",
-        "/opt/homebrew/lib/libopus.dylib",
-        "/usr/local/lib/libopus.0.dylib",
-        "/usr/local/lib/libopus.dylib",
-    ]
-    found = next((p for p in candidates if p and Path(p).exists()), None)
+    found = next((p for p in _opus_candidates() if p and Path(p).exists()), None)
     if found is None:
-        logger.warning(
-            "libopus not in dyld cache and no brew copy found; "
-            "set STACKCHAN_LIBOPUS_PATH or brew install opus",
-        )
+        if sys.platform in ("darwin", "win32"):
+            logger.warning(
+                "libopus not found and no fallback copy exists; "
+                "set STACKCHAN_LIBOPUS_PATH%s",
+                " or brew install opus" if sys.platform == "darwin"
+                else " (path to opus.dll) or place it in gateway/vendor/",
+            )
         _libopus_patched = True
         return
     original = ctypes.util.find_library
@@ -73,7 +95,8 @@ def _patch_find_library_for_brew() -> None:
 
     ctypes.util.find_library = patched
     _libopus_patched = True
-    logger.info("libopus path resolved via brew fallback: %s", found)
+    logger.info("libopus path resolved via fallback: %s", found)
+
 
 DEVICE_INPUT_SAMPLE_RATE = 16000
 DEVICE_OUTPUT_SAMPLE_RATE = 24000
