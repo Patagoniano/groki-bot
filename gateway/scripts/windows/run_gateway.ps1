@@ -2,7 +2,8 @@
 # Run the gateway as a long-lived process on Windows.
 # Runs with --no-stdio: no stdio MCP server, so stdin is not read. (Reading a
 # stdin pipe on Windows deadlocked native-module loading on robot connect.)
-# Output goes to logs\gateway.log. Stop with Ctrl+C or by ending this script.
+# Output goes to logs\gateway.log. Stop with Ctrl+C (then Y), or:
+#   taskkill /T /F /PID <cmd pid shown at start>
 . "$PSScriptRoot\_common.ps1"
 $uv = Get-UvPath
 Set-Location $GatewayDir
@@ -20,7 +21,8 @@ $psi.FileName = "$env:SystemRoot\System32\cmd.exe"
 $psi.Arguments = '/d /c "' + $inner + '"'
 $psi.WorkingDirectory = $GatewayDir
 $psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
+# Share this console so Ctrl+C reaches cmd/uv/python (answer Y if cmd asks).
+$psi.CreateNoWindow = $false
 
 $proc = [System.Diagnostics.Process]::Start($psi)
 "[{0}] gateway started (cmd pid {1}), log: {2}" -f (Get-Date -Format s), $proc.Id, $log | Write-Host
