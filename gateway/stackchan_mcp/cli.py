@@ -74,6 +74,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "non-zero if at least one blocking issue is found."
         ),
     )
+    parser.add_argument(
+        "--no-stdio",
+        action="store_true",
+        help=(
+            "Run only the robot WebSocket / HTTP servers, without the stdio "
+            "MCP server, until interrupted. Use this when running as a "
+            "background service (also enabled by STACKCHAN_NO_STDIO=1)."
+        ),
+    )
     return parser
 
 
@@ -545,19 +554,55 @@ def _run_preflight() -> int:
     return 1
 
 
-async def _run() -> None:
-    """Start both the ESP32 WebSocket server and the stdio MCP server."""
+# Native extension modules loaded lazily on the first robot connection.
+_WINDOWS_PRELOAD_MODULES = ("numpy", "sherpa_onnx", "opuslib", "sounddevice")
+
+
+def _preload_native_modules() -> None:
+    """Import native extension modules up front on Windows.
+
+    The stdio MCP server parks a worker thread in a blocking read on stdin.
+    On Windows, when stdin is a pipe, loading a DLL whose C runtime start-up
+    inspects the standard handles (numpy does) then blocks until that read
+    returns, which deadlocks the first robot connection. Importing these
+    modules before the stdio server starts avoids it. Missing optional
+    extras are ignored.
+    """
+    if sys.platform != "win32":
+        return
+    import importlib  # noqa: PLC0415
+
+    for name in _WINDOWS_PRELOAD_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception as exc:  # optional extra not installed / no DLL
+            logger.debug("preload of %s skipped: %s", name, exc)
+
+
+def _no_stdio_requested(args: argparse.Namespace) -> bool:
+    if getattr(args, "no_stdio", False):
+        return True
+    return os.getenv("STACKCHAN_NO_STDIO", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _run(*, stdio: bool = True) -> None:
+    """Start the ESP32 WebSocket server and, unless disabled, the stdio MCP server."""
     from .gateway import get_gateway
     from .stdio_server import run_stdio_server
 
+    _preload_native_modules()
     gateway = get_gateway()
 
     await gateway.start()
     logger.info("Gateway started, waiting for ESP32 connections...")
 
     try:
-        # Run stdio MCP server (blocks until MCP client disconnects)
-        await run_stdio_server()
+        if stdio:
+            # Run stdio MCP server (blocks until MCP client disconnects)
+            await run_stdio_server()
+        else:
+            logger.info("stdio MCP server disabled (--no-stdio); running until interrupted")
+            await asyncio.Event().wait()
     finally:
         await gateway.stop()
 
@@ -588,7 +633,7 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    asyncio.run(_run())
+    asyncio.run(_run(stdio=not _no_stdio_requested(args)))
 
 
 if __name__ == "__main__":
