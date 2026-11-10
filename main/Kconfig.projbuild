@@ -72,4 +72,14 @@ menu "Stack-chan feature gates"
             mode does NOT start httpd / conversation. OFF to drop the esp-now
             dependency from slim builds.
 
+
+config STACKCHAN_ATOM_NEKOMIMI_LED
+    bool "Drive the nekomimi LED strip on GPIO38 (AtomS3R / AtomNyan)"
+    default n
+    help
+        On AtomS3R + Atomic ECHO BASE / Atomic Voice Base, GPIO38 is the
+        I2C SDA line that M5Unified uses to configure the ES8311 codec.
+        Driving a WS2812 strip on it breaks the microphone enable (the mic
+        records silence) while the speaker, configured at boot, still works.
+        Enable only on hardware that wires the LED strip to GPIO38 instead.
 endmenu

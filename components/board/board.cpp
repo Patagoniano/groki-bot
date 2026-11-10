@@ -9,6 +9,7 @@
 
 #include <M5Unified.h>
 #include <esp_log.h>
+#include <sdkconfig.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -44,6 +45,13 @@ public:
         if (kind_ == BoardKind::StopWatch) {
             return;
         }
+#if !defined(CONFIG_STACKCHAN_ATOM_NEKOMIMI_LED)
+        // GPIO38 is the ES8311 I2C SDA on AtomS3R + Atomic ECHO / Voice Base;
+        // an RMT LED strip there leaves the microphone silent. See Kconfig.
+        if (kind_ == BoardKind::AtomNyan) {
+            return;
+        }
+#endif
         const int gpio = (kind_ == BoardKind::AtomNyan)
                              ? NekomimiLedStrip::kDataGpioAtomNyan
                              : NekomimiLedStrip::kDataGpioCoreS3;
