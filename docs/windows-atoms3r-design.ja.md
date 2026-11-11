@@ -2,7 +2,7 @@
 
 - 対象: `Patagoniano/groki-bot`（`JosssphZhou/groki-bot` のフォーク）、ブランチ `windows-support`
 - 基準: upstream `699a370`（2026-10-31）、本体ファームは公式リリース v0.2.2 の `atoms3r`
-- 状態: 設計のみ。Windows上と実機ではまだ何も実行していない。「未確認」と書いた項目はコード読解による見立て
+- 状態: 2026-11-11 にフェーズ0〜4を実機で完了（ウェイクワード→Gemini Live→日本語応答、タスクスケジューラ常駐）。フェーズ5以降は未着手
 
 ## 1. 目的と範囲
 
@@ -76,7 +76,14 @@ CAPTURE_PORT=8766
 STACKCHAN_FACE_TRACKER_AUTOSTART=0
 STACKCHAN_HEAD_FOLLOW_DEFAULT=0
 STACKCHAN_USB_DISABLE=1
+# 実機で必要だった値
+STACKCHAN_MANUAL_VAD=0          # このファームは listen stop を送らないため、話し終わり判定をGeminiに任せる
+STACKCHAN_MIC_GAIN_DB=24        # Atomic Voice Base のマイクは話し声で約 -55 dBFS と小さい
+STACKCHAN_WAKE_PHRASE=hey groki
+STACKCHAN_GEMINI_VOICE=Leda
 ```
+
+日本語で応答させるには `gateway/personality.md`（Git管理外）に「返事は必ず日本語」などを書く。
 
 ## 6. 安全とプライバシー
 
@@ -117,3 +124,16 @@ STACKCHAN_USB_DISABLE=1
 | 「Hi Grok」を日本語話者の発音で拾いにくい | 使い勝手が悪い | `STACKCHAN_KWS_THRESHOLD` と `STACKCHAN_KWS_SCORE` を調整、別の呼びかけを試す |
 | 再生中はマイクが止まる仕様 | 話の途中で割り込めない | 仕様として受け入れる |
 | PCのIPアドレスが変わる | 接続が切れる | ルーターでIPを固定する |
+
+## 9. 実機で分かったこと（2026-11-11）
+
+| 事象 | 原因 | 対処 |
+|---|---|---|
+| ロボット接続直後にゲートウェイが固まる | stdio MCPのスレッドがstdinパイプを読み続け、numpyのDLL読み込みと衝突（py-spyで確認） | `--no-stdio` を追加し常駐時に使用。Windowsではネイティブモジュールを先読み |
+| マイク音声が完全な無音 | 本体とベースの接触不良の可能性が高い（差し直し後に音が入った） | 差し直し。GPIO38のLED駆動はES8311のI2C SDAと競合するため既定で無効化（Kconfig） |
+| 返事まで30〜45秒 | 手動VADが listen stop を待つが、ファームは送らない | `STACKCHAN_MANUAL_VAD=0` |
+| ウェイクワードが反応しにくい | マイク入力が小さい | `STACKCHAN_MIC_GAIN_DB=24` |
+| CIでatoms3rがビルド失敗 | m5gfx 0.3.0 が esp_psram.h を依存宣言なしで参照 | `m5stack/m5gfx` を 0.2.x に固定 |
+| PowerShellのファイアウォール系コマンドが応答しない | 未特定 | `netsh` を使用 |
+
+残課題: Mac専用の `web_search` 等のツールをWindowsでは無効化する、`gbot` 連携（フェーズ5）、CI（W8）と手順書（W9）。
