@@ -43,9 +43,12 @@ except ImportError:  # pragma: no cover - python-dotenv is a core dependency
     pass
 
 from .gbot_client import (
+    AskError,
     GrokBotClient,
     extract_bot_replies,
     gbot_missing_error,
+    SUBPROCESS_TEXT_KWARGS,
+    gbot_command,
     resolve_gbot_bin,
     send_timeout_s,
 )
@@ -153,12 +156,14 @@ def _run_gbot_send(text: str, dest: str) -> tuple[bool, str]:
         return False, gbot_missing_error()
     try:
         proc = subprocess.run(
-            [bin_path, "--json", "send", dest, text],
+            [*gbot_command(bin_path), "--json", "send", dest, text],
             capture_output=True,
-            text=True,
+            **SUBPROCESS_TEXT_KWARGS,
             timeout=SEND_TIMEOUT_S,
             check=False,
         )
+    except AskError as exc:
+        return False, str(exc)
     except subprocess.TimeoutExpired:
         return False, "gbot send timeout"
     except OSError as exc:

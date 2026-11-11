@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import subprocess
 import time
 from pathlib import Path
@@ -49,6 +50,40 @@ def resolve_gbot_bin() -> str | None:
         found = shutil.which(override)
         return found
     return shutil.which("gbot")
+
+
+# grok-bot-cli's JS entry point, relative to the npm global prefix that holds
+# the gbot.cmd shim (npm view grok-bot-cli bin).
+_WINDOWS_GBOT_ENTRY = Path("node_modules") / "grok-bot-cli" / "dist" / "bin" / "gbot.mjs"
+
+
+def gbot_command(bin_path: str) -> list[str]:
+    """Argument prefix that runs gbot without going through a batch file.
+
+    On Windows npm installs gbot as ``gbot.cmd``. Running a .cmd/.bat passes
+    the arguments through cmd.exe, which interprets characters such as ``&``,
+    ``|`` and ``%`` in the message text, so text from a voice request could
+    run commands. When the shim is found, run ``node <gbot.mjs>`` directly.
+    """
+    if sys.platform == "win32" and bin_path.lower().endswith((".cmd", ".bat")):
+        entry = Path(bin_path).resolve().parent / _WINDOWS_GBOT_ENTRY
+        node = shutil.which("node")
+        if entry.is_file() and node:
+            return [node, str(entry)]
+        raise AskError(
+            "refusing to run gbot through a batch file; set STACKCHAN_GBOT_BIN "
+            "to the gbot.mjs entry or make node and grok-bot-cli findable"
+        )
+    if bin_path.lower().endswith((".mjs", ".js")):
+        node = shutil.which("node")
+        if not node:
+            raise AskError("node not found for gbot entry " + bin_path)
+        return [node, bin_path]
+    return [bin_path]
+
+
+# gbot prints UTF-8 JSON; the Windows default (cp932) would garble Japanese.
+SUBPROCESS_TEXT_KWARGS: dict[str, Any] = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
 def gbot_missing_error() -> str:
@@ -93,9 +128,9 @@ class GrokBotClient:
         for attempt in range(SEND_RETRY_ATTEMPTS):
             try:
                 proc = subprocess.run(
-                    [self.gbot, "--json", *args],
+                    [*gbot_command(self.gbot), "--json", *args],
                     capture_output=True,
-                    text=True,
+                    **SUBPROCESS_TEXT_KWARGS,
                     timeout=self.timeout_s,
                     check=False,
                 )
