@@ -55,8 +55,8 @@ def _dump(payload: dict[str, Any]) -> None:
 
 def main(argv: list[str]) -> int:
     args = argv[1:]
-    if args and args[0] == "--json":
-        args = args[1:]
+    # grok-bot-cli 0.12: `gbot <sub> --json [--] ...`
+    args = [a for a in args if a not in ("--json", "--")]
     if not args:
         print("missing command", file=sys.stderr)
         return 2

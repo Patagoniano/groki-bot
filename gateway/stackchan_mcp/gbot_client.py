@@ -82,6 +82,19 @@ def gbot_command(bin_path: str) -> list[str]:
     return [bin_path]
 
 
+def json_args(args: list[str]) -> list[str]:
+    """Put --json after the subcommand: grok-bot-cli 0.12 rejects it before.
+
+    ``send`` also gets ``--`` so message text starting with ``-`` is never
+    parsed as an option.
+    """
+    if not args:
+        return ["--json"]
+    if args[0] == "send":
+        return [args[0], "--json", "--", *args[1:]]
+    return [args[0], "--json", *args[1:]]
+
+
 # gbot prints UTF-8 JSON; the Windows default (cp932) would garble Japanese.
 SUBPROCESS_TEXT_KWARGS: dict[str, Any] = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
@@ -128,7 +141,7 @@ class GrokBotClient:
         for attempt in range(SEND_RETRY_ATTEMPTS):
             try:
                 proc = subprocess.run(
-                    [*gbot_command(self.gbot), "--json", *args],
+                    [*gbot_command(self.gbot), *json_args(args)],
                     capture_output=True,
                     **SUBPROCESS_TEXT_KWARGS,
                     timeout=self.timeout_s,

@@ -37,3 +37,10 @@ def test_windows_cmd_shim_without_entry_is_refused(monkeypatch, tmp_path):
 def test_mjs_override_uses_node(monkeypatch):
     monkeypatch.setattr(gbot_client.shutil, "which", lambda name: "/usr/bin/node")
     assert gbot_command("/x/gbot.mjs") == ["/usr/bin/node", "/x/gbot.mjs"]
+
+
+def test_json_flag_after_subcommand():
+    from stackchan_mcp.gbot_client import json_args
+
+    assert json_args(["send", "bot", "-hi"]) == ["send", "--json", "--", "bot", "-hi"]
+    assert json_args(["thread", "bot", "--limit", "20"]) == ["thread", "--json", "bot", "--limit", "20"]

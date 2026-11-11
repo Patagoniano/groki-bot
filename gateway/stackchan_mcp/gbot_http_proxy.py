@@ -49,6 +49,7 @@ from .gbot_client import (
     gbot_missing_error,
     SUBPROCESS_TEXT_KWARGS,
     gbot_command,
+    json_args,
     resolve_gbot_bin,
     send_timeout_s,
 )
@@ -156,7 +157,7 @@ def _run_gbot_send(text: str, dest: str) -> tuple[bool, str]:
         return False, gbot_missing_error()
     try:
         proc = subprocess.run(
-            [*gbot_command(bin_path), "--json", "send", dest, text],
+            [*gbot_command(bin_path), *json_args(["send", dest, text])],
             capture_output=True,
             **SUBPROCESS_TEXT_KWARGS,
             timeout=SEND_TIMEOUT_S,
